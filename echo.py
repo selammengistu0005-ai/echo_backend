@@ -58,7 +58,7 @@ def support():
                 f"User preferences: {user.get('preferences', {})}.\n\n"
                 "Guidelines:\n"
                 "1. Detect the intent of the user message from: "
-                "[billing, order_tracking, cancellation, complaint, technical_support, product_info, smalltalk, unknown].\n"
+                "[bills, course_tracking, cancellation, complaint, technical_support, course_info, smalltalk, unknown].\n"
                 " Always include the detected intent in the format <intent=X> but do not show this to the user.\n\n"
                 "2. Language handling:\n"
                 " - Automatically detect the language of the user's message.\n"
@@ -142,3 +142,4 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 3000))
     print(f"✅ Server running on port {port}")
     app.run(host="0.0.0.0", port=port, debug=True)
+
