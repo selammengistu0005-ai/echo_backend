@@ -29,7 +29,7 @@ if not firebase_admin._apps:
         db = None
 # ====================== OpenAI / Gemini Client ======================
 client = OpenAI(
-    api_key=os.getenv("GEMINI_API_KEY"),
+    api_key=os.getenv("GEMINI_2_API_KEY"),
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 if not os.getenv("GEMINI_API_KEY"):
@@ -169,4 +169,5 @@ def get_metrics(agent_id):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 3000))
     print(f"✅ Selam server running on port {port}")
+
     app.run(host="0.0.0.0", port=port, debug=True)
