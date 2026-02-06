@@ -1,12 +1,32 @@
 import re
+import os
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
-import os
 from dotenv import load_dotenv
-import json
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 load_dotenv()
+
+# 1. Initialize the ID Badge (Credentials)
+if not firebase_admin._apps:
+    try:
+        # Looks for the secret key in your environment variables
+        firebase_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+        if firebase_json:
+            cred = credentials.Certificate(json.loads(firebase_json))
+            firebase_admin.initialize_app(cred)
+            db = firestore.client()  # This is your Remote Control
+            print("✅ Firebase is linked!")
+        else:
+            print("❌ Error: FIREBASE_SERVICE_ACCOUNT variable is empty!")
+            db = None
+    except Exception as e:
+        print(f"❌ Firebase failed: {e}")
+        db = None
+
 app = Flask(__name__)
 CORS(app)
 
@@ -16,7 +36,7 @@ client = OpenAI(
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 if not os.getenv("GEMINI_2_API_KEY"):
-    print("⚠️ WARNING: GEMINI_API_KEY is not set in environment variables.")
+    print("⚠️ WARNING: GEMINI_2_API_KEY is not set in environment variables.")
 
 # ====================== Main Support Endpoint ======================
 @app.route("/api/support", methods=["POST"])
@@ -34,7 +54,7 @@ def support():
             "role": "system",
             "content": (
                 f"You are Echo, a friendly, reliable, and professional AI customer support assistant "
-                f"for a small business customer-support website. The user’s name is {user.get('name', ' ')}.\n\n"
+                f"for a small business customer-support website. The user's name is {user.get('name', ' ')}.\n\n"
                 f"User preferences: {user.get('preferences', {})}.\n\n"
                 "Guidelines:\n"
                 "1. Detect the intent of the user message from: "
@@ -77,10 +97,46 @@ def support():
         intent = intent_match.group(1).strip() if intent_match else "unknown"
         # Clean the reply (remove <intent=...>)
         reply = re.sub(r'<intent=[^>]+>', '', raw_reply).strip()
-        return jsonify({"reply": reply, "intent": intent}) # Optional: return intent for debugging
+        log_data = {
+            "timestamp": firestore.SERVER_TIMESTAMP,  # Always use server time
+            "user_id": str(user.get("id", "anonymous")),
+            "user_name": user.get("name", "Guest"),
+            "question": message,
+            "answer": reply,
+            "category": intent,  # This feeds your Ring Chart
+            "agent_id": agent_id
+        }
+        db.collection("agents").document(agent_id).collection("logs").add(log_data)
+        return jsonify({"reply": reply, "intent": intent})  # Optional: return intent for debugging
     except Exception as e:
         print(f"Error processing request: {e}")
         return jsonify({"reply": "Something went wrong on the server."}), 500
+
+@app.route("/api/logs/<agent_id>", methods=["GET"])
+def get_logs(agent_id):
+    if not db:
+        return jsonify({"error": "Database offline"}), 503
+
+    try:
+        # Ask Firebase for the newest 100 notes
+        docs = (db.collection("agents")
+                .document(agent_id)
+                .collection("logs")
+                .order_by("timestamp", direction=firestore.Query.DESCENDING)
+                .limit(100)
+                .stream())
+
+        logs = []
+        for doc in docs:
+            log = doc.to_dict()
+            log["id"] = doc.id  # The unique barcode of the note
+            if log.get("timestamp"):
+                log["timestamp"] = log["timestamp"].isoformat()
+            logs.append(log)
+
+        return jsonify(logs)  # Sends the list to your Dashboard website
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 3000))
